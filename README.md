@@ -1,6 +1,6 @@
 # Yelp Behavioral Risk Analytics Report
 
-**1.Business Objective**
+**1. Business Objective**
 
 - The business question tackled was:
 
@@ -21,7 +21,7 @@ Business failure was defined not by a single month open/close flag, but by long-
 
 - This definition is important because Yelp has no revenue field, no failure tag, and check-in logs are incomplete in some months. So stress detection had to rely on behavioral momentum, sentiment density, and stability loss, not internal financial truth.
 
-**2.Data Source**
+**2. Data Source**
 
 - The primary dataset used in this project comes from the official Yelp Open Dataset published on the Yelp business data resources site. The data is publicly available for academic and commercial skill-building, and contains real user-generated interaction signals across millions of reviews and business profiles
 
@@ -39,13 +39,28 @@ Business failure was defined not by a single month open/close flag, but by long-
 
 - Each file was first uploaded into Azure storage and then referenced into Snowflake using an external stage. The data was copied into VARIANT tables to preserve JSON structure before flattening into analytical staging tables.
 
-**3.Data Cleaning**
+**3. Data Cleaning**
 
 - After loading raw JSON, structured analytical tables were built inside Snowflake SQL Notebook. Only essential fields were extracted, cast into clean types, deduplicated, null-handled, and then joined for modeling.Below are the four core tables: 
 
   - STG_YELP_BUSINESS cleaned by removing duplicate BUSINESS_ID entries (none found) and normalizing 103 missing category tags to UNKNOWN, while keeping NAME, CITY, STATE, STARS, REVIEW_COUNT, and OPENED fully       non-NULL.
   
   - STG_YELP_REVIEWS cleaned by deduplicating on REVIEW_ID using ROW_NUMBER and retaining 1 unique review per REVIEW_ID, with no missing BUSINESS_ID, USER_ID, or REVIEW_DATE, and sentiment polarity recomputed        for all reviews using TextBlob.
+      - Three important Snowflake Python UDFs that generate sentiment intelligence:
+
+        - ANALYZE_SENTIMENT(TEXT) → classified text into POSITIVE / NEGATIVE / NEUTRAL using polarity threshold (±0.2)
+        
+        - SENTIMENT(TEXT) → returns raw polarity score (-1 to +1 range)
+
+        - FINAL_SENTIMENT → segmentation tag combining STARS and sentiment category
+          
+      - The final columns created for quantifying sentiments:
+        
+        - SENTIMENTS → POSITIVE / NEGATIVE / NEUTRAL label
+          
+        - SENTIMENT_SCORE → numeric polarity value
+          
+        - FINAL_SENTIMENT → STRONG POSITIVE / STRONG NEGATIVE / MISMATCH RISK / ANOMALY / NEUTRAL  
   
   - STG_YELP_USER cleaned by converting 189,669+ NULL or empty ELITE reviewer tags into NOT ELITE, ensuring no missing USER_ID or REVIEW_COUNT, and standardizing YELPING_SINCE into TIMESTAMP for account age          analysis.
   
@@ -63,7 +78,7 @@ Business failure was defined not by a single month open/close flag, but by long-
 
 - These four staging tables form the gold layer for behavioral trend analysis and risk modeling.
 
-**4.Exploratory Data Analysis Observations**
+**4. Exploratory Data Analysis Observations**
 
 i. Engagement Distributions & Social Dynamics
 
@@ -210,7 +225,7 @@ v. Segmentation & Environmental Risk
 
   - Reviewer trust amplifies stress severity, but does not cause closure alone
 
-**6.Correlations Interpretation:**
+**6. Correlations Interpretation:**
 
 - The correlations that mattered most were:
   
