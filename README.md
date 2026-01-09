@@ -267,5 +267,73 @@ v. Segmentation & Environmental Risk
 
   - Yelp risk signals behave non-linearly. Social behavioral data will rarely show strong Pearson correlation with a binary closure flag. The correct analytical interpretation is to engineer lag-based trend          deltas and test group lift behavior
 
+**7. Feature Engineering for Predictive Modeling**
 
+- Exploratory analysis and hypothesis testing proved that static metrics (raw review counts/average ratings) are poor predictors of risk. Risk emerges from behavioral change, not absolute levels.I engineered a     Momentum-Based Feature Set where each business is compared against its own historical baseline, removing size and popularity bias.
+
+  - Demand Momentum: Current engagement activity vs. a 6-month rolling baseline (detects fading interest).
+  
+  - Quality Momentum: 3-month rating velocity (measures the "slope" of satisfaction decline).
+  
+  - Emotional Pressure: Negative sentiment surge (identifies spikes in negativity beyond historical norms).
+  
+  - Rating Volatility: Measure of rating instability (acts as a stress amplifier).
+  
+  - Contextual Signals: Category context (nominal encoding) and Reviewer Credibility (Elite reviewer flag).
+  
+  - Synthesis: These features directly reflect the "stress fingerprints" identified during testing, ensuring the model is grounded in validated behavioral patterns.
+
+**8. Predictive Modeling Approach**
+
+- To detect stress emergence, I built a supervised classification system designed for real-world deployment.
+
+  - Target Label: RATING_STRESS_FLAG (representing a sustained rating decline over a 3-month window). This was engineered using lagged data to prevent leakage and ensure the model predicts future outcomes.
+  
+  - Algorithm: Random Forest Classifier was selected for its ability to capture non-linear interactions between signals and its robustness to the noise inherent in public review data.
+  
+  - The Pipeline: All preprocessing (imputation, scaling, encoding) was handled via a unified sklearn Pipeline and ColumnTransformer. This eliminated manual processing errors and ensured zero data leakage.
+  
+  - Validation Strategy: The dataset was split into 70% Training and 30% Unseen Test partitions using stratified sampling to preserve the distribution of the minority "stress" class.
+
+**9. Model Performance & Validation Results**
+
+- The model achieved stable, realistic performance on unseen data. Rather than "perfect" overfitted scores, these metrics represent actionable separation in a noisy environment.
+  
+  - AUROC: ~0.75 (Indicates the model correctly ranks a stressed business over a stable one 75% of the time).
+  
+  - Recall: ~78% (Prioritized to ensure early detection; missed stress signals are more costly than false alarms).
+  
+  - Precision: ~72%
+  
+  - F1 Score: ~75%
+
+- Key Insight: Static features alone produced AUROC values near 0.50–0.60 (random guessing). Significant performance gains only appeared after introducing momentum and sentiment-relative features, proving that     behavioral change is the true driver of risk.
+
+**10. Synthesis: From Hypotheses to Model**
+
+- The model’s behavior strongly reinforces our statistical findings, creating a "Closed Loop" of evidence:
+  
+  - H1 & H2 (Tempo): Confirmed that engagement collapse and rating decline are linked; these emerged as the model's strongest predictors.
+  
+  - H3 (Volatility): Validated that volatility is a weak standalone signal but a powerful amplifier when combined with momentum loss.
+  
+  - H4 (Popularity): Proved that static size does not equal safety; popularity was replaced by self-normalized momentum.
+  
+  - H5 (Elite Impact): Confirmed Elite reviewers act as signal amplifiers, improving model confidence in anomaly months.
+
+**11. Business Implications & Limitations**
+
+- Strategic Value
+  - Organizations can use this framework to identify at-risk businesses months before closure, distinguish temporary dips from terminal stress, and prioritize interventions based on momentum collapse rather than     just "low stars."
+
+- Known Limitations
+  - Data Gaps: Yelp check-in coverage is uneven across different cities.
+  
+  - Context: Sentiment is lexicon-based; future versions could use contextual embeddings (BERT/LLMs).
+  
+  - External Factors: Macroeconomic conditions and local competition density are not directly observable in this dataset.
+
+**12. Final Conclusion**
+
+This project demonstrates that public behavioral signals contain actionable early-warning intelligence for business failure. By shifting the analytical lens from static popularity to dynamic momentum, we have built a system that reliably detects stress patterns across diverse categories. The results prove that meaningful risk prediction is achievable even in the absence of internal financial data, providing a scalable blueprint for market-wide risk monitoring.
 
