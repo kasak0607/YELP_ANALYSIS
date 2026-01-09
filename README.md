@@ -23,7 +23,7 @@ Business failure was defined not by a single month open/close flag, but by long-
 
 **2. Data Source**
 
-- The primary dataset used in this project comes from the official Yelp Open Dataset published on the Yelp business data resources site. The data is publicly available for academic and commercial skill-building, and contains real user-generated interaction signals across millions of reviews and business profiles
+- The dataset used comes from the official Yelp Open Dataset. It was first uploaded into Azure storage, then ingested into Snowflake using external stages. Four JSON entity files were used: business profiles, reviews, users, and check-ins. Since Yelp does not provide revenue or a failure label, behavioral signals were engineered into analytical tables using SQL Notebook before modeling.
 
 **https://business.yelp.com/data/resources/open-dataseta**
 
@@ -39,7 +39,7 @@ Business failure was defined not by a single month open/close flag, but by long-
 
 - Each file was first uploaded into Azure storage and then referenced into Snowflake using an external stage. The data was copied into VARIANT tables to preserve JSON structure before flattening into analytical staging tables.
 
-**3. Data Cleaning**
+**3. Data Processing**
 
 - After loading raw JSON, structured analytical tables were built inside Snowflake SQL Notebook. Only essential fields were extracted, cast into clean types, deduplicated, null-handled, and then joined for modeling.Below are the four core tables: 
 
@@ -76,8 +76,30 @@ Business failure was defined not by a single month open/close flag, but by long-
   
   - STG_TBL_CHECKINS → BUSINESS_ID, DATE_VISITED
 
-- These four staging tables form the gold layer for behavioral trend analysis and risk modeling.
+- Following features were created to convert public behavioral signals into measurable business-risk :
+  
+  - ANALYTICS_RESTAURANT_MONTHLY: Captures monthly customer review momentum, average star rating, and rating volatility for every business category, serving as the core satisfaction and demand signal table.
 
+  - ANALYTICS_RESTAURANT_CHECKINS_MONTHLY: Aggregates monthly check-in volume per business, acting as a validated proxy for footfall, customer interest, and offline engagement momentum.
+  
+  - ANALYTICS_RESTAURANT_RATING_TREND: Applies 3-month lag window calculations on average ratings to measure rating slope movement and detect early satisfaction decline behavior.
+   
+  - ANALYTICS_RESTAURANT_SIGNAL_IMPORTANCE: Merges lag-based momentum deltas from reviews and check-ins with volatility behavior to engineer trend-driven risk signals instead of static attributes.
+    
+  - ANALYTICS_STRESS_TARGET: Generates the target label RATING_STRESS_FLAG using a 3-month rating drop threshold of −0.4 stars, ensuring stress is tagged only when a sustained negative slope appears.
+    
+- Following Hypothesis test tables were created for behavioral validation:
+
+  - HYPOTHESIS_1_TEST → segments businesses into ENGAGEMENT_DROP vs NO_DROP based on median engagement score (reviews 60%, checkins 40%).
+  
+  - HYPOTHESIS_2_TEST → creates RATING_DOWN_FLAG and ENGAGEMENT_DOWN_FLAG using 1-month LAG difference.
+  
+  - HYPOTHESIS_3_TEST → groups businesses into HIGH_VOLATILITY vs LOW_VOLATILITY using median RATING_VOLATILITY.
+  
+  - HYPOTHESIS_4_TEST → tests open rate across popularity tiers (VERY_POPULAR, MED_POPULAR, LOW_POPULAR) and found static popularity does not predict closure direction.
+  
+  - HYPOTHESIS_5_ELITE_IMPACT → maps reviewer ELITE_FLAG, REVIEWER_AGE_YEARS, and influence grouping and found elite reviewers increase anomaly confidence but do not shift closure risk alone.
+  
 **4. Exploratory Data Analysis Observations**
 
 i. Engagement Distributions & Social Dynamics
@@ -156,9 +178,7 @@ v. Segmentation & Environmental Risk
 
 - This validates a temporal cause-effect signature:
 
-  - Customer interest ↓ → review momentum ↓ → satisfaction ↓ months later → stress signature ↑
-
-  - This is not linear correlation, but time-lag behavior stress linkage
+  -H1 confirms that businesses in the ENGAGEMENT_DROP group show a statistically different rating distribution compared to stable engagement businesses (p≈0). The separation is valid, but effect direction           appears with a lag, not as direct causation. Engagement decline frequently appears 1–3 months before rating momentum turns negative.
 
 **ii. Hypothesis 2: 3-month rating decline is linked with engagement deceleration**
 
@@ -170,15 +190,15 @@ v. Segmentation & Environmental Risk
   
   - Engagement velocity drop and rating slope decline were paired signatures, not separate behaviors
 
-- This proves:
-
-  - Satisfaction slope ↓ → engagement momentum ↓ → stress risk signal ↑
-
 - Interpretation:
 
   - Customers lose interest when ratings fall
   
   - Rating stress is not emotional noise only, it comes with measurable momentum decline
+ 
+- Conclusion
+
+  - H2 validates that months with strong 3-month rating decline also show engagement deceleration (p≈0). Rating stress months and engagement stress months form paired behavioral signatures, meaning the model         must treat them as interacting trend signals, not isolated metrics.
 
 **iii. Hypothesis 3: Businesses with unstable ratings have slightly higher closure density**
 - H3 p value:0
@@ -195,6 +215,9 @@ v. Segmentation & Environmental Risk
   
   - Volatility alone is weak. But volatility is a stress amplifier when combined with sentiment or momentum collapse.
   - So the conclusion becomes conditional: Volatility is useful only when other stress signals collapse or spike together
+    
+- Conclusion
+  - H3 shows a small absolute closure lift (~2.65%) between HIGH_VOLATILITY and LOW_VOLATILITY businesses. This proves that volatility alone is weak, but becomes a meaningful stress amplifier when aligned with       engagement collapse or negative sentiment surge.
 
 **iv. Hypothesis 4: Popular businesses do not close less or more by default**
 
@@ -214,6 +237,9 @@ v. Segmentation & Environmental Risk
 
   - We learned that popularity as a trend signal, not a standalone closure protector
 
+- Conclusion
+  - H4 was the only hypothesis with an extreme p-value, but all popularity tiers showed nearly equal open rates (~79–80%). This proves that static popularity does not predict closure. Popularity is valuable only     as a trend feature when measuring momentum loss, not as a fixed survival indicator.
+
 **v. Hypothesis 5: Elite reviewers influence stressed months more strongly, but don’t predict closure alone**
 
 - H5 p value: 0
@@ -223,7 +249,7 @@ v. Segmentation & Environmental Risk
 
 - Conclusion:
 
-  - Reviewer trust amplifies stress severity, but does not cause closure alone
+  - H5 confirms that elite reviewers increase signal confidence during stressed months (p≈0), but ELITE_REVIEWER_FLAG alone does not shift closure probability. Elite reviewer behavior strengthens anomaly             detection, not failure prediction by itself.
 
 **6. Correlations Interpretation:**
 
