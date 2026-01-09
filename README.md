@@ -1,6 +1,6 @@
 # Yelp Behavioral Risk Analytics Report
-# Business Objective
-
+**Business Objective
+**
 The business question tackled was:
 
 **Can public Yelp behavioral signals detect business stress early and separate closure-risk businesses before shutdown windows appear, without revenue or internal finance data?**
@@ -19,25 +19,30 @@ A business is realistically considered failed/stressed only when:
 
 This definition is important because Yelp has no revenue field, no failure tag, and check-in logs are incomplete in some months. So stress detection had to rely on behavioral momentum, sentiment density, and stability loss, not internal financial truth.
 
-#Data Source 
+**Data Source 
+**
 
 The primary dataset used in this project comes from the official Yelp Open Dataset published on the Yelp business data resources site. The data is publicly available for academic and commercial skill-building, and contains real user-generated interaction signals across millions of reviews and business profiles
 
-https://business.yelp.com/data/resources/open-dataseta
+**https://business.yelp.com/data/resources/open-dataseta
+**
 
 The dataset is delivered in JSON format and includes multiple entity files. For this project, four core files were used as analytical sources:
 
-Business profiles(150,346 rows) → structural metadata of Yelp-listed businesses
+- Business profiles(150,346 rows) → structural metadata of Yelp-listed businesses
 
-Reviews(6,990,280 rows) → user-written feedback and star ratings
+- Reviews(6,990,280 rows) → user-written feedback and star ratings
 
-Users(1,987,897 rows) → reviewer metadata including elite status and platform age
+- Users(1,987,897 rows) → reviewer metadata including elite status and platform age
 
-Check-ins(131,930rows) → timestamp logs of visits to businesses
+- Check-ins(131,930rows) → timestamp logs of visits to businesses
 
 Each file was first uploaded into Azure storage and then referenced into Snowflake using an external stage. The data was copied into VARIANT tables to preserve JSON structure before flattening into analytical staging tables.
-# Data Cleaning 
-After loading raw JSON, structured analytical tables were built inside Snowflake SQL Notebook. Only essential fields were extracted, cast into clean types, deduplicated, null-handled, and then joined for modeling. 
+
+**Data Cleaning 
+**
+1. After loading raw JSON, structured analytical tables were built inside Snowflake SQL Notebook. Only essential fields were extracted, cast into clean types, deduplicated, null-handled, and then joined for modeling.Below are the four core tables: 
+
 - STG_YELP_BUSINESS cleaned by removing duplicate BUSINESS_ID entries (none found) and normalizing 103 missing category tags to UNKNOWN, while keeping NAME, CITY, STATE, STARS, REVIEW_COUNT, and OPENED fully non-NULL.
 
 - STG_YELP_REVIEWS cleaned by deduplicating on REVIEW_ID using ROW_NUMBER and retaining 1 unique review per REVIEW_ID, with no missing BUSINESS_ID, USER_ID, or REVIEW_DATE, and sentiment polarity recomputed for all reviews using TextBlob.
@@ -46,7 +51,7 @@ After loading raw JSON, structured analytical tables were built inside Snowflake
 
 - STG_TBL_CHECKINS cleaned by removing duplicate visits on BUSINESS_ID + DATE_VISITED, keeping the latest timestamp per visit, and validating full check-in time range using MIN/MAX date sanity checks.
 
-The key analytical tables produced include:
+2. The key analytical tables produced include:
 
 - STG_YELP_BUSINESS → BUSINESS_ID, NAME, CITY, STATE, STARS, REVIEW_COUNT, OPENED, CATEGORIES
 
@@ -58,33 +63,59 @@ The key analytical tables produced include:
 
 These four staging tables form the gold layer for behavioral trend analysis and risk modeling.
 
+**Exploratory Data Analysis Observations
+**
+1. Engagement Distributions & Social Dynamics
+The data follows a distinct Power-Law (Long-Tail) Distribution, typical of social platforms, which heavily influences modeling strategies:
 
+- Extreme Skewness: Review and check-in volumes are heavily right-skewed. A small "elite" percentage of businesses drive the vast majority of platform interactions, while most businesses occupy low-to-medium engagement tiers.
 
-# Exploratory Data Analysis Observations
-- Review count distribution is extremely skewed → few businesses have very high reviews, most have low-medium reviews. This means popularity must be treated carefully, or models will bias toward famous businesses only.
+- Popularity vs. Risk: High interaction counts (popularity) do not correlate linearly with survival. The data proves that large businesses fail due to momentum collapse, not lack of size. Consequently, raw popularity metrics must be scaled to avoid biasing models toward "famous" entities.
 
-- Check-in count distribution is also skewed → many businesses have very low visits logged, some have massive foot-traffic months. This is expected because Yelp engagement depends on customer habit, not business size.
+- Category Overlap: Businesses frequently belong to multiple category tags. This necessitates category-wide modeling rather than isolated segment analysis to capture the full scope of competitive pressure.
 
-- Rating volatility is higher when review volume is low. If 1 business gets only 2 reviews in a month, and one is 5★ and other is 1★, volatility becomes huge. This makes volatility a stress indicator only when enough reviews exist, not when data is small.
+2. Rating Volatility & Signal Reliability
+Analysis of rating standard deviation (volatility) revealed that statistical noise often mimics stress signals in low-volume environments:
 
-- Sentiment ratio shows negativity is present but rarely dominant. Most Yelp users lean positive or neutral, so negative sentiment alone won’t predict closure, but negative ratio + engagement drop + volatility combined show stress reliably.
-- Correlation Behavior Interpretation
+- Volume-Dependent Volatility: Rating volatility spikes disproportionately when monthly review volume is low (e.g., a month with one 5-star and one 1-star review yields massive volatility). This makes volatility a measure of data fragility rather than business stress in sparse datasets.
 
-The correlations that mattered most were:
+- Weak Solo Predictor: When isolated, the difference in volatility between open and closed businesses was small (~2.6%). This confirms that volatility is a weak predictor on its own.
 
-- Engagement velocity vs rating slope decline
+- Contextual Stress Signal: Volatility becomes a reliable "stress indicator" only when conditioned on sufficient review volume or when paired with a collapse in engagement trends. It signals instability, not necessarily immediate failure.
 
-- Negative sentiment ratio vs volatility spikes
+3. Temporal Trends & Momentum (The "Stress Fingerprint")
+Hypothesis testing on lagged metrics confirmed that business failure is a non-linear process defined by specific "stress fingerprints" rather than static correlations:
 
-- Momentum collapse months vs future closure density
+- Order of Operations: Lagged deltas (1-month and 3-month) show that Interest Stress (check-in decline) typically precedes Rating Stress (star decline).
 
-These are trend-interaction correlations, not static ones.
+- Synchronized Collapse: A statistical "Kill Zone" emerges when three signals interact simultaneously:
 
-Interpretation :
+i.Engagement Velocity drops (ENGAGEMENT_CHANGE < 0).
 
-Yelp risk signals behave non-linearly. Social behavioral data will rarely show strong Pearson correlation with a binary closure flag. The correct analytical interpretation is to engineer lag-based trend deltas and test group lift behavior
+ii.Rating Momentum turns negative (RATING_CHANGE_3M < -0.5).
 
-# Hypothesis Testing 
+iii.Negative Sentiment surges.
+
+- Non-Linearity: Static correlations between review counts, stars, and closure status were weak. This validates that failure is driven by the slope of decline (momentum) rather than the absolute state of the business.
+
+4. Sentiment & Semantic Pressure
+Text-based polarity scores (via TextBlob) provided a separable intelligence layer that corrected for quantitative bias:
+
+- Positive Polarity Bias: The dataset exhibits a global positive skew, consistent with human bias in public review platforms. Therefore, the presence of positive sentiment is a baseline, not a safety signal.
+
+- The Negative Threshold: Negative sentiment is rarely dominant in raw counts but acts as a critical "Stress Amplifier." Closure risk does not correlate with the mere presence of negativity, but rather when the Negative Sentiment Ratio surges above 30% during a period of falling engagement.
+
+- Crowd Pressure: Statistically extreme negative-sentiment months (where polarity drops far below the global mean) serve as markers for "crowd emotional pressure events," which accelerate the momentum of failure.
+
+5. Segmentation & Environmental Risk
+Geographic and user-tier segmentation revealed external factors influencing the "Stress Severity":
+
+- City-Level Risk: Closed businesses cluster differently by city, indicating that stress emergence is location-dependent (likely due to local competition density), even if the mechanics of closure (momentum loss) remain constant.
+
+- Elite Reviewers as Amplifiers: Elite reviewers do not inherently cause closure. Instead, they act as signal amplifiers, increasing the visibility of stress during anomaly months. Their activity validates the severity of a decline but does not independently predict it.
+
+**Hypothesis Testing 
+**
 Five core behavioral hypotheses were tested, each designed to reflect real business stress signatures, not academic theory only.
 
 - **Hypothesis 1: Engagement collapse months are followed by lower ratings later
@@ -169,6 +200,20 @@ That is extremely significant mathematically. But the segmentation table shows:
 - Conclusion:
 
 Reviewer trust amplifies stress severity, but does not cause closure alone
+
+**The correlations that mattered most were:
+**
+- Engagement velocity vs rating slope decline
+
+- Negative sentiment ratio vs volatility spikes
+
+- Momentum collapse months vs future closure density
+
+These are trend-interaction correlations, not static ones.
+
+- Interpretation :
+
+Yelp risk signals behave non-linearly. Social behavioral data will rarely show strong Pearson correlation with a binary closure flag. The correct analytical interpretation is to engineer lag-based trend deltas and test group lift behavior
 
 
 
