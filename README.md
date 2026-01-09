@@ -36,18 +36,25 @@ Users(1,987,897 rows) → reviewer metadata including elite status and platform 
 Check-ins(131,930rows) → timestamp logs of visits to businesses
 
 Each file was first uploaded into Azure storage and then referenced into Snowflake using an external stage. The data was copied into VARIANT tables to preserve JSON structure before flattening into analytical staging tables.
+# Data Cleaning 
+After loading raw JSON, structured analytical tables were built inside Snowflake SQL Notebook. Only essential fields were extracted, cast into clean types, deduplicated, null-handled, and then joined for modeling. 
+- STG_YELP_BUSINESS cleaned by removing duplicate BUSINESS_ID entries (none found) and normalizing 103 missing category tags to UNKNOWN, while keeping NAME, CITY, STATE, STARS, REVIEW_COUNT, and OPENED fully non-NULL.
 
-#Core Tables Created for Analysis
+- STG_YELP_REVIEWS cleaned by deduplicating on REVIEW_ID using ROW_NUMBER and retaining 1 unique review per REVIEW_ID, with no missing BUSINESS_ID, USER_ID, or REVIEW_DATE, and sentiment polarity recomputed for all reviews using TextBlob.
 
-After loading raw JSON, structured analytical tables were built inside Snowflake SQL Notebook. Only essential fields were extracted, cast into clean types, deduplicated, null-handled, and then joined for modeling. The key analytical tables produced include:
+- STG_YELP_USER cleaned by converting 189,669+ NULL or empty ELITE reviewer tags into NOT ELITE, ensuring no missing USER_ID or REVIEW_COUNT, and standardizing YELPING_SINCE into TIMESTAMP for account age analysis.
 
-STG_YELP_BUSINESS → BUSINESS_ID, NAME, CITY, STATE, STARS, REVIEW_COUNT, OPENED, CATEGORIES
+- STG_TBL_CHECKINS cleaned by removing duplicate visits on BUSINESS_ID + DATE_VISITED, keeping the latest timestamp per visit, and validating full check-in time range using MIN/MAX date sanity checks.
 
-STG_YELP_REVIEWS → BUSINESS_ID, REVIEW_ID, USER_ID, REVIEW_DATE, STARS, REVIEW_GIVEN, SENTIMENTS, FINAL_SENTIMENTS, SENTIMENT_SCORE
+The key analytical tables produced include:
 
-STG_YELP_USER → USER_ID, REVIEW_COUNT, ELITE, YELPING_SINCE, ELITE_REVIEWER_FLAG, USER_AGE_YEARS
+- STG_YELP_BUSINESS → BUSINESS_ID, NAME, CITY, STATE, STARS, REVIEW_COUNT, OPENED, CATEGORIES
 
-STG_TBL_CHECKINS → BUSINESS_ID, DATE_VISITED
+- STG_YELP_REVIEWS → BUSINESS_ID, REVIEW_ID, USER_ID, REVIEW_DATE, STARS, REVIEW_GIVEN, SENTIMENTS, FINAL_SENTIMENTS, SENTIMENT_SCORE
+
+- STG_YELP_USER → USER_ID, REVIEW_COUNT, ELITE, YELPING_SINCE, ELITE_REVIEWER_FLAG, USER_AGE_YEARS
+
+- STG_TBL_CHECKINS → BUSINESS_ID, DATE_VISITED
 
 These four staging tables form the gold layer for behavioral trend analysis and risk modeling.
 
