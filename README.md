@@ -4,7 +4,7 @@
 
 - The business question tackled was:
 
-**Can public Yelp behavioral signals detect business stress early and separate closure-risk businesses before shutdown windows appear, without revenue or internal finance data?**
+  **Can public Yelp behavioral signals detect business stress early and separate closure-risk businesses before shutdown windows appear, without revenue or internal finance data?**
 
 - In real life, business closure is not a single event, it is a stress evolution process, where behavioral signals collapse, spike, or destabilize before a business goes offline permanently.
 Business failure was defined not by a single month open/close flag, but by long-term closure density, engineered later into FAILED_FLAG. This prevents the system from mislabeling temporary low engagement months, seasonality effects, or Yelp logging gaps as business death.
